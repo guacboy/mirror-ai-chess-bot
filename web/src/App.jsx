@@ -12,7 +12,23 @@ const WS_URL = import.meta.env.PROD
 // TODO(feat): add draw/abort options, also ability to view previous moves.
 // TODO(feat): user's w/l-stats can be viewed at the bottom.
 // TODO(feat): settings option (ability to reset model, import games).
-// TODO(feat): sound effects
+
+
+// Identifies the sound to play for a bot move by matching legal moves against the resulting FEN.
+function getBotMoveSound(game, newFen) {
+    const newBoard = newFen.split(" ")[0];
+    for (const m of game.moves({ verbose: true })) {
+        const tmp = new Chess(game.fen());
+        tmp.move(m);
+        if (tmp.fen().split(" ")[0] === newBoard) {
+            if (m.flags.includes("k") || m.flags.includes("q")) return "castle";
+            if (m.flags.includes("c") || m.flags.includes("e")) return "capture";
+            return "move";
+        }
+    }
+    return "move";
+}
+
 
 export default function App() {
     // phase controls which screen is shown:
@@ -29,6 +45,11 @@ export default function App() {
     const [status, setStatus] = useState("");
 
     const wsRef = useRef(null);
+    const soundsRef = useRef({
+        move: new Audio("/sounds/move.mp3"),
+        capture: new Audio("/sounds/capture.mp3"),
+        castle: new Audio("/sounds/castle.mp3"),
+    });
 
     // Used to validate moves client-side before sending them,
     // so illegal moves are rejected immediately without a round-trip to the server.
@@ -71,12 +92,15 @@ export default function App() {
 
             // Server sent the bot's reply move; update the board again.
             if (msg.type === "bot_move") {
+                const sound = getBotMoveSound(gameRef.current, msg.fen);
                 gameRef.current.load(msg.fen);
                 setFen(msg.fen);
                 setMoveLog((prev) => [
                     ...prev,
                     { by: "bot", text: `${msg.description}  [${msg.source}]` },
                 ]);
+                soundsRef.current[sound].currentTime = 0;
+                soundsRef.current[sound].play().catch(() => { });
             }
 
             // Game ended: show the result and a breakdown of how the bot played.
@@ -118,6 +142,14 @@ export default function App() {
         // Apply the move immediately so the board updates visually right away.
         gameRef.current.move(match);
         setFen(gameRef.current.fen());
+
+        const sound = match.flags.includes("k") || match.flags.includes("q")
+            ? "castle"
+            : match.flags.includes("c") || match.flags.includes("e")
+                ? "capture"
+                : "move";
+        soundsRef.current[sound].currentTime = 0;
+        soundsRef.current[sound].play().catch(() => { });
 
         // Always promote to queen.
         const uci = match.promotion
