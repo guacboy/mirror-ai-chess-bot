@@ -17,3 +17,17 @@ html, body, #root {
     background: #8eafd4 !important;
     color: #000000 !important;
 }
+
+.btn-quit:hover {
+    background: #c47a7a !important;
+    color: #000000 !important;
+}
+
+.move-entry {
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.move-entry:hover {
+    background: rgba(142, 175, 212, 0.08);
+}

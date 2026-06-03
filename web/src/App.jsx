@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Chess } from "chess.js";
 import Board from "./components/Board";
+import GameControls from "./components/GameControls";
 import MoveLog from "./components/MoveLog";
 import Status from "./components/Status";
 
@@ -8,10 +9,10 @@ const WS_URL = import.meta.env.PROD
     ? `ws://${window.location.host}/ws`
     : "ws://localhost:8000/ws";
 
-// TODO(fix): website auto-scrolls down when new move is printed.
-// TODO(feat): add draw/abort options, also ability to view previous moves.
+
 // TODO(feat): user's w/l-stats can be viewed at the bottom.
-// TODO(feat): settings option (ability to reset model, import games).
+// TODO(feat): settings functionality (ability to reset model, import games).
+// TODO(feat): resign/abort functionality
 
 
 // Identifies the sound to play for a bot move by matching legal moves against the resulting FEN.
@@ -43,6 +44,8 @@ export default function App() {
     const [userColor, setUserColor] = useState("white");
     const [moveLog, setMoveLog] = useState([]);
     const [status, setStatus] = useState("");
+    const [fenHistory, setFenHistory] = useState([]);
+    const [viewIndex, setViewIndex] = useState(null);
 
     const wsRef = useRef(null);
     const soundsRef = useRef({
@@ -76,6 +79,8 @@ export default function App() {
             if (msg.type === "game_started") {
                 gameRef.current = new Chess();
                 setFen(msg.fen);
+                setFenHistory([msg.fen]);
+                setViewIndex(null);
                 setMoveLog([]);
                 setStatus(
                     `Game started - you are ${color}. Bot mirrors your style ${msg.model_pct}% of the time.`
@@ -99,6 +104,7 @@ export default function App() {
                     ...prev,
                     { by: "bot", text: `${msg.description}  [${msg.source}]` },
                 ]);
+                setFenHistory((prev) => [...prev, msg.fen]);
                 soundsRef.current[sound].currentTime = 0;
                 soundsRef.current[sound].play().catch(() => { });
             }
@@ -141,7 +147,9 @@ export default function App() {
 
         // Apply the move immediately so the board updates visually right away.
         gameRef.current.move(match);
-        setFen(gameRef.current.fen());
+        const newFen = gameRef.current.fen();
+        setFen(newFen);
+        setFenHistory((prev) => [...prev, newFen]);
 
         const sound = match.flags.includes("k") || match.flags.includes("q")
             ? "castle"
@@ -167,8 +175,70 @@ export default function App() {
         setFen("start");
         setMoveLog([]);
         setStatus("");
+        setFenHistory([]);
+        setViewIndex(null);
         gameRef.current = new Chess();
     };
+
+    const handleSettings = () => {};
+    const canAbort = fenHistory.length - 1 < 3;
+    const handleQuit = () => wsRef.current?.send(JSON.stringify({ type: canAbort ? "abort" : "resign" }));
+
+    const handleMoveClick = (index) => {
+        const fenIdx = index + 1;
+        const newIndex = fenIdx >= fenHistory.length - 1 ? null : fenIdx;
+        if (newIndex === viewIndex) return;
+
+        const dest = newIndex ?? fenHistory.length - 1;
+        if (dest > 0 && fenHistory[dest - 1] && fenHistory[dest]) {
+            const game = new Chess(fenHistory[dest - 1]);
+            const sound = getBotMoveSound(game, fenHistory[dest]);
+            soundsRef.current[sound].currentTime = 0;
+            soundsRef.current[sound].play().catch(() => { });
+        }
+
+        setViewIndex(newIndex);
+    };
+
+    const handleNav = useCallback((dir) => {
+        const latest = fenHistory.length - 1;
+        const cur = viewIndex ?? latest;
+        let newIndex;
+
+        if (dir === "prev") {
+            if (cur === 0) return;
+            newIndex = cur - 1;
+        } else if (dir === "next") {
+            if (viewIndex === null) return;
+            newIndex = cur + 1 >= latest ? null : cur + 1;
+        } else {
+            return;
+        }
+
+        const dest = newIndex ?? latest;
+        if (dest > 0 && fenHistory[dest - 1] && fenHistory[dest]) {
+            const game = new Chess(fenHistory[dest - 1]);
+            const sound = getBotMoveSound(game, fenHistory[dest]);
+            soundsRef.current[sound].currentTime = 0;
+            soundsRef.current[sound].play().catch(() => { });
+        }
+
+        setViewIndex(newIndex);
+    }, [fenHistory, viewIndex]);
+
+    useEffect(() => {
+        const onKey = (e) => {
+            if (e.key === "ArrowLeft") handleNav("prev");
+            else if (e.key === "ArrowRight") handleNav("next");
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [handleNav]);
+
+    const displayFen = viewIndex !== null ? fenHistory[viewIndex] : fen;
+    const atStart = (viewIndex ?? fenHistory.length - 1) === 0;
+    const atEnd = viewIndex === null;
+    const activeMoveIndex = (viewIndex ?? fenHistory.length - 1) - 1;
 
     return (
         <div style={styles.page}>
@@ -192,23 +262,24 @@ export default function App() {
                     <h1 style={styles.title}>Mirror AI Chess Bot</h1>
                     <div style={styles.game}>
                         <Board
-                            fen={fen}
+                            fen={displayFen}
                             userColor={userColor}
                             onMove={handleMove}
-                            disabled={phase === "over"}
+                            disabled={phase === "over" || viewIndex !== null}
                         />
                         <div style={styles.sidebar}>
                             <Status text={status} />
-                            <MoveLog moves={moveLog} />
-                            {phase === "over" && (
-                                <button
-                                    className="btn"
-                                    style={{ ...styles.btn, marginTop: 16 }}
-                                    onClick={handlePlayAgain}
-                                >
-                                    Play Again
-                                </button>
-                            )}
+                            <MoveLog moves={moveLog} style={{ flex: 1, minHeight: 0 }} activeMoveIndex={activeMoveIndex} onMoveClick={handleMoveClick} />
+                            <GameControls
+                                phase={phase}
+                                onSettings={handleSettings}
+                                onQuit={handleQuit}
+                                canAbort={canAbort}
+                                onPlayAgain={handlePlayAgain}
+                                onNav={handleNav}
+                                atStart={atStart}
+                                atEnd={atEnd}
+                            />
                         </div>
                     </div>
                 </>
@@ -270,7 +341,7 @@ const styles = {
     game: {
         display: "flex",
         gap: 28,
-        alignItems: "flex-start",
+        alignItems: "stretch",
         marginTop: 12,
         flexWrap: "wrap",
         justifyContent: "center",
