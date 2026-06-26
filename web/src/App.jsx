@@ -3,17 +3,26 @@ import { Chess } from "chess.js";
 import Board from "./components/Board";
 import GameControls from "./components/GameControls";
 import MoveLog from "./components/MoveLog";
+import Record from "./components/Record";
 import Status from "./components/Status";
 
 const WS_URL = import.meta.env.PROD
     ? `ws://${window.location.host}/ws`
     : "ws://localhost:8000/ws";
 
+const RECORD_KEY = "chess-record";
 
-// TODO(feat): user's w/l-stats can be viewed at the bottom.
+function loadRecord() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(RECORD_KEY));
+        if (saved) return { wins: 0, losses: 0, draws: 0, ...saved };
+    } catch { /* ignore malformed storage */ }
+    return { wins: 0, losses: 0, draws: 0 };
+}
+
 // TODO(feat): settings functionality (ability to reset model, import games).
 // TODO(feat): resign/abort functionality
-
+// TODO(feat): have the "play again" button start a new game as the opposite color rather than go back to the main menu
 
 // Identifies the sound to play for a bot move by matching legal moves against the resulting FEN.
 function getBotMoveSound(game, newFen) {
@@ -46,6 +55,7 @@ export default function App() {
     const [status, setStatus] = useState("");
     const [fenHistory, setFenHistory] = useState([]);
     const [viewIndex, setViewIndex] = useState(null);
+    const [record, setRecord] = useState(loadRecord);
 
     const wsRef = useRef(null);
     const soundsRef = useRef({
@@ -120,6 +130,15 @@ export default function App() {
                     `${labels[msg.result] ?? msg.result}  ·  Bot used your style ${mPct}%, Stockfish ${sfPct}%`
                 );
                 setPhase("over");
+                setRecord((prev) => {
+                    const next = {
+                        wins: prev.wins + (msg.result === "win" ? 1 : 0),
+                        losses: prev.losses + (msg.result === "lose" ? 1 : 0),
+                        draws: prev.draws + (msg.result === "draw" ? 1 : 0),
+                    };
+                    localStorage.setItem(RECORD_KEY, JSON.stringify(next));
+                    return next;
+                });
             }
 
             // Training finished in the background after the game; append a note to status.
@@ -261,12 +280,15 @@ export default function App() {
                 <>
                     <h1 style={styles.title}>Mirror AI Chess Bot</h1>
                     <div style={styles.game}>
-                        <Board
-                            fen={displayFen}
-                            userColor={userColor}
-                            onMove={handleMove}
-                            disabled={phase === "over" || viewIndex !== null}
-                        />
+                        <div style={styles.boardColumn}>
+                            <Board
+                                fen={displayFen}
+                                userColor={userColor}
+                                onMove={handleMove}
+                                disabled={phase === "over" || viewIndex !== null}
+                            />
+                            <Record wins={record.wins} losses={record.losses} draws={record.draws} />
+                        </div>
                         <div style={styles.sidebar}>
                             <Status text={status} />
                             <MoveLog moves={moveLog} style={{ flex: 1, minHeight: 0 }} activeMoveIndex={activeMoveIndex} onMoveClick={handleMoveClick} />
@@ -345,6 +367,10 @@ const styles = {
         marginTop: 12,
         flexWrap: "wrap",
         justifyContent: "center",
+    },
+    boardColumn: {
+        display: "flex",
+        flexDirection: "column",
     },
     sidebar: {
         display: "flex",
