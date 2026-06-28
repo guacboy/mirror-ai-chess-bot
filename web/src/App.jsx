@@ -20,9 +20,13 @@ function loadRecord() {
     return { wins: 0, losses: 0, draws: 0 };
 }
 
-// TODO(feat): settings functionality (ability to reset model, import games).
+// TODO(feat): settings functionality (ability to reset model, import games)
+// TODO(feat): stockfish auto-adjusts its rating based on user's skill level
 // TODO(feat): resign/abort functionality
 // TODO(feat): have the "play again" button start a new game as the opposite color rather than go back to the main menu
+// TODO(feat): show visual effect that game is over by win/loss
+// TODO(feat): sound effects for when the king is in check, when a piece can't be moved because the king is in check, and checkmate sound
+// TODO(bug): fix move list from expanding downwards, only make the window scrollable if the list gets too large
 
 // Identifies the sound to play for a bot move by matching legal moves against the resulting FEN.
 function getBotMoveSound(game, newFen) {

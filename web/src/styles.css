@@ -31,3 +31,13 @@ html, body, #root {
 .move-entry:hover {
     background: rgba(142, 175, 212, 0.08);
 }
+
+@keyframes check-flash-a {
+    from { background-color: rgba(196, 90, 90, 0.85); }
+    to { background-color: rgba(196, 90, 90, 0); }
+}
+
+@keyframes check-flash-b {
+    from { background-color: rgba(196, 90, 90, 0.85); }
+    to { background-color: rgba(196, 90, 90, 0); }
+}
