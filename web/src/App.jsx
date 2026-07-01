@@ -24,7 +24,6 @@ function loadRecord() {
 // TODO(feat): stockfish auto-adjusts its rating based on user's skill level
 // TODO(feat): resign/abort functionality
 // TODO(feat): have the "play again" button start a new game as the opposite color rather than go back to the main menu
-// TODO(feat): show visual effect that game is over by win/loss
 // TODO(feat): sound effects for when the king is in check, when a piece can't be moved because the king is in check, and checkmate sound
 // TODO(bug): fix move list from expanding downwards, only make the window scrollable if the list gets too large
 
@@ -60,6 +59,7 @@ export default function App() {
     const [fenHistory, setFenHistory] = useState([]);
     const [viewIndex, setViewIndex] = useState(null);
     const [record, setRecord] = useState(loadRecord);
+    const [gameResult, setGameResult] = useState(null); // "win" | "lose" | "draw" | null
 
     const wsRef = useRef(null);
     const soundsRef = useRef({
@@ -134,6 +134,7 @@ export default function App() {
                     `${labels[msg.result] ?? msg.result}  ·  Bot used your style ${mPct}%, Stockfish ${sfPct}%`
                 );
                 setPhase("over");
+                setGameResult(msg.result);
                 setRecord((prev) => {
                     const next = {
                         wins: prev.wins + (msg.result === "win" ? 1 : 0),
@@ -200,6 +201,7 @@ export default function App() {
         setStatus("");
         setFenHistory([]);
         setViewIndex(null);
+        setGameResult(null);
         gameRef.current = new Chess();
     };
 
@@ -263,8 +265,24 @@ export default function App() {
     const atEnd = viewIndex === null;
     const activeMoveIndex = (viewIndex ?? fenHistory.length - 1) - 1;
 
+    const overlayGradient =
+        gameResult === "win"
+            ? "radial-gradient(ellipse at center, rgba(50,200,80,0) 30%, rgba(50,200,80,0.28) 100%)"
+            : gameResult === "lose"
+            ? "radial-gradient(ellipse at center, rgba(220,50,50,0) 30%, rgba(220,50,50,0.28) 100%)"
+            : null;
+
     return (
         <div style={styles.page}>
+            <div style={{
+                position: "fixed",
+                inset: 0,
+                background: overlayGradient ?? "transparent",
+                pointerEvents: "none",
+                zIndex: 1,
+                opacity: phase === "over" && overlayGradient ? 1 : 0,
+                transition: "opacity 0.8s ease",
+            }} />
             {phase === "setup" && (
                 <div style={styles.setup}>
                     <h1 style={styles.title}>Mirror AI Chess Bot</h1>
