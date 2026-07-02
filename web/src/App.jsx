@@ -25,7 +25,6 @@ function loadRecord() {
 // TODO(feat): resign/abort functionality
 // TODO(feat): have the "play again" button start a new game as the opposite color rather than go back to the main menu
 // TODO(feat): sound effects for when the king is in check, when a piece can't be moved because the king is in check, and checkmate sound
-// TODO(bug): fix move list from expanding downwards, only make the window scrollable if the list gets too large
 
 // Identifies the sound to play for a bot move by matching legal moves against the resulting FEN.
 function getBotMoveSound(game, newFen) {
@@ -313,7 +312,7 @@ export default function App() {
                         </div>
                         <div style={styles.sidebar}>
                             <Status text={status} />
-                            <MoveLog moves={moveLog} style={{ flex: 1, minHeight: 0 }} activeMoveIndex={activeMoveIndex} onMoveClick={handleMoveClick} />
+                            <MoveLog moves={moveLog} activeMoveIndex={activeMoveIndex} onMoveClick={handleMoveClick} />
                             <GameControls
                                 phase={phase}
                                 onSettings={handleSettings}

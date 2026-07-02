@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-export default function MoveLog({ moves, style, activeMoveIndex, onMoveClick }) {
+export default function MoveLog({ moves, activeMoveIndex, onMoveClick }) {
     const activeRef = useRef(null);
 
     useEffect(() => {
@@ -8,7 +8,7 @@ export default function MoveLog({ moves, style, activeMoveIndex, onMoveClick }) 
     }, [activeMoveIndex, moves.length]);
 
     return (
-        <div style={{ ...styles.container, ...style }}>
+        <div style={styles.container}>
             <div style={styles.header}>Move Log</div>
             <div style={styles.list}>
                 {moves.length === 0 && (
@@ -53,8 +53,7 @@ const styles = {
         fontFamily: "'Rajdhani', sans-serif",
     },
     list: {
-        flex: 1,
-        minHeight: 0,
+        height: 300,
         overflowY: "auto",
         padding: "6px 10px",
         background: "rgba(0,0,0,0.4)",
