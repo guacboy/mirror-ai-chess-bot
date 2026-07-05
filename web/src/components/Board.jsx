@@ -9,7 +9,7 @@ import { Chessboard } from "react-chessboard";
 //   onMove   : called with (sourceSquare, targetSquare) when a piece is dropped;
 //              should return true to confirm the move or false to snap the piece back
 //   disabled : when true (game over), drops are ignored so pieces can't be moved
-export default function Board({ fen, userColor, onMove, disabled }) {
+export default function Board({ fen, userColor, onMove, disabled, onIllegalMove }) {
     // Flips the board so the player's pieces are always at the bottom.
     const orientation = userColor === "white" ? "white" : "black";
 
@@ -34,9 +34,10 @@ export default function Board({ fen, userColor, onMove, disabled }) {
         return game.moves({ square: selectedSquare, verbose: true }).map((m) => m.to);
     }, [game, selectedSquare]);
 
-    // Briefly flashes the king's square red when an attempted move is rejected while in check.
+    // Briefly flashes the king's square red and plays the illegal sound when a move is rejected while in check.
     const flashCheck = () => {
         if (!game.inCheck()) return;
+        onIllegalMove?.();
         const [kingSquare] = game.findPiece({ type: "k", color: game.turn() });
         if (!kingSquare) return;
         setCheckFlash((prev) => ({

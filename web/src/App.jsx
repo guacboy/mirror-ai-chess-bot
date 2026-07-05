@@ -24,7 +24,6 @@ function loadRecord() {
 // TODO(feat): stockfish auto-adjusts its rating based on user's skill level
 // TODO(feat): resign/abort functionality
 // TODO(feat): have the "play again" button start a new game as the opposite color rather than go back to the main menu
-// TODO(feat): sound effects for when the king is in check, when a piece can't be moved because the king is in check, and checkmate sound
 
 // Identifies the sound to play for a bot move by matching legal moves against the resulting FEN.
 function getBotMoveSound(game, newFen) {
@@ -33,6 +32,7 @@ function getBotMoveSound(game, newFen) {
         const tmp = new Chess(game.fen());
         tmp.move(m);
         if (tmp.fen().split(" ")[0] === newBoard) {
+            if (m.flags.includes("p")) return "promote";
             if (m.flags.includes("k") || m.flags.includes("q")) return "castle";
             if (m.flags.includes("c") || m.flags.includes("e")) return "capture";
             return "move";
@@ -65,6 +65,10 @@ export default function App() {
         move: new Audio("/sounds/move.mp3"),
         capture: new Audio("/sounds/capture.mp3"),
         castle: new Audio("/sounds/castle.mp3"),
+        promote: new Audio("/sounds/promote.mp3"),
+        moveCheck: new Audio("/sounds/move-check.mp3"),
+        illegal: new Audio("/sounds/illegal.mp3"),
+        gameEnd: new Audio("/sounds/game-end.mp3"),
     });
 
     // Used to validate moves client-side before sending them,
@@ -118,8 +122,10 @@ export default function App() {
                     { by: "bot", text: `${msg.description}  [${msg.source}]` },
                 ]);
                 setFenHistory((prev) => [...prev, msg.fen]);
-                soundsRef.current[sound].currentTime = 0;
-                soundsRef.current[sound].play().catch(() => { });
+                const inCheck = gameRef.current.inCheck();
+                const actualSound = sound === "promote" ? "promote" : inCheck ? "moveCheck" : sound;
+                soundsRef.current[actualSound].currentTime = 0;
+                soundsRef.current[actualSound].play().catch(() => { });
             }
 
             // Game ended: show the result and a breakdown of how the bot played.
@@ -134,6 +140,8 @@ export default function App() {
                 );
                 setPhase("over");
                 setGameResult(msg.result);
+                soundsRef.current.gameEnd.currentTime = 0;
+                soundsRef.current.gameEnd.play().catch(() => { });
                 setRecord((prev) => {
                     const next = {
                         wins: prev.wins + (msg.result === "win" ? 1 : 0),
@@ -174,11 +182,16 @@ export default function App() {
         setFen(newFen);
         setFenHistory((prev) => [...prev, newFen]);
 
-        const sound = match.flags.includes("k") || match.flags.includes("q")
+        const inCheck = gameRef.current.inCheck();
+        const sound = match.flags.includes("p")
+            ? "promote"
+            : inCheck
+            ? "moveCheck"
+            : match.flags.includes("k") || match.flags.includes("q")
             ? "castle"
             : match.flags.includes("c") || match.flags.includes("e")
-                ? "capture"
-                : "move";
+            ? "capture"
+            : "move";
         soundsRef.current[sound].currentTime = 0;
         soundsRef.current[sound].play().catch(() => { });
 
@@ -307,6 +320,11 @@ export default function App() {
                                 userColor={userColor}
                                 onMove={handleMove}
                                 disabled={phase === "over" || viewIndex !== null}
+                                onIllegalMove={() => {
+                                    const snd = soundsRef.current.illegal;
+                                    snd.currentTime = 0;
+                                    snd.play().catch(() => { });
+                                }}
                             />
                             <Record wins={record.wins} losses={record.losses} draws={record.draws} />
                         </div>
