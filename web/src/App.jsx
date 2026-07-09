@@ -20,9 +20,8 @@ function loadRecord() {
     return { wins: 0, losses: 0, draws: 0 };
 }
 
-// TODO(feat): settings functionality (ability to reset model, import games)
+// TODO(feat): settings functionality (ability to reset model, import games, reset w/l stats)
 // TODO(feat): stockfish auto-adjusts its rating based on user's skill level
-// TODO(feat): resign/abort functionality
 // TODO(feat): have the "play again" button start a new game as the opposite color rather than go back to the main menu
 
 // Identifies the sound to play for a bot move by matching legal moves against the resulting FEN.
@@ -186,12 +185,12 @@ export default function App() {
         const sound = match.flags.includes("p")
             ? "promote"
             : inCheck
-            ? "moveCheck"
-            : match.flags.includes("k") || match.flags.includes("q")
-            ? "castle"
-            : match.flags.includes("c") || match.flags.includes("e")
-            ? "capture"
-            : "move";
+                ? "moveCheck"
+                : match.flags.includes("k") || match.flags.includes("q")
+                    ? "castle"
+                    : match.flags.includes("c") || match.flags.includes("e")
+                        ? "capture"
+                        : "move";
         soundsRef.current[sound].currentTime = 0;
         soundsRef.current[sound].play().catch(() => { });
 
@@ -217,9 +216,24 @@ export default function App() {
         gameRef.current = new Chess();
     };
 
-    const handleSettings = () => {};
+    const handleSettings = () => { };
     const canAbort = fenHistory.length - 1 < 3;
-    const handleQuit = () => wsRef.current?.send(JSON.stringify({ type: canAbort ? "abort" : "resign" }));
+    const handleQuit = () => {
+        wsRef.current?.send(JSON.stringify({ type: canAbort ? "abort" : "resign" }));
+        wsRef.current?.close();
+        setPhase("over");
+        setGameResult("lose");
+        setStatus(canAbort ? "Game aborted." : "You resigned.");
+        if (!canAbort) {
+            setRecord((prev) => {
+                const next = { ...prev, losses: prev.losses + 1 };
+                localStorage.setItem(RECORD_KEY, JSON.stringify(next));
+                return next;
+            });
+        }
+        soundsRef.current.gameEnd.currentTime = 0;
+        soundsRef.current.gameEnd.play().catch(() => { });
+    };
 
     const handleMoveClick = (index) => {
         const fenIdx = index + 1;
@@ -281,8 +295,8 @@ export default function App() {
         gameResult === "win"
             ? "radial-gradient(ellipse at center, rgba(50,200,80,0) 30%, rgba(50,200,80,0.28) 100%)"
             : gameResult === "lose"
-            ? "radial-gradient(ellipse at center, rgba(220,50,50,0) 30%, rgba(220,50,50,0.28) 100%)"
-            : null;
+                ? "radial-gradient(ellipse at center, rgba(220,50,50,0) 30%, rgba(220,50,50,0.28) 100%)"
+                : null;
 
     return (
         <div style={styles.page}>
