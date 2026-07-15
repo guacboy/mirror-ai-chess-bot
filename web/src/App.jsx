@@ -4,6 +4,7 @@ import Board from "./components/Board";
 import GameControls from "./components/GameControls";
 import MoveLog from "./components/MoveLog";
 import Record from "./components/Record";
+import SettingsModal from "./components/SettingsModal";
 import Status from "./components/Status";
 
 const WS_URL = import.meta.env.PROD
@@ -20,9 +21,9 @@ function loadRecord() {
     return { wins: 0, losses: 0, draws: 0 };
 }
 
-// TODO(feat): settings functionality (ability to reset model, import games, reset w/l stats)
 // TODO(feat): stockfish auto-adjusts its rating based on user's skill level
-// TODO(feat): have the "play again" button start a new game as the opposite color rather than go back to the main menu
+// TODO(feat): add a small "more detail" button in the message box to show detailed information regarding bot
+// TODO(bug): bot message not updating accurately (check if model is being tracked properly)
 
 // Identifies the sound to play for a bot move by matching legal moves against the resulting FEN.
 function getBotMoveSound(game, newFen) {
@@ -58,6 +59,7 @@ export default function App() {
     const [viewIndex, setViewIndex] = useState(null);
     const [record, setRecord] = useState(loadRecord);
     const [gameResult, setGameResult] = useState(null); // "win" | "lose" | "draw" | null
+    const [showSettings, setShowSettings] = useState(false);
 
     const wsRef = useRef(null);
     const soundsRef = useRef({
@@ -203,20 +205,42 @@ export default function App() {
         return true;
     }, []);
 
-    // Resets everything back to the color-picker screen.
     const handlePlayAgain = () => {
+        const nextColor = userColor === "white" ? "black" : "white";
         wsRef.current?.close();
-        setPhase("setup");
-        setFen("start");
+        gameRef.current = new Chess();
+        setFen(gameRef.current.fen());
         setMoveLog([]);
         setStatus("");
         setFenHistory([]);
         setViewIndex(null);
         setGameResult(null);
-        gameRef.current = new Chess();
+        startGame(nextColor);
     };
 
-    const handleSettings = () => { };
+    const handleSettings = () => setShowSettings(true);
+
+    const handleResetStats = () => {
+        const reset = { wins: 0, losses: 0, draws: 0 };
+        localStorage.setItem(RECORD_KEY, JSON.stringify(reset));
+        setRecord(reset);
+        setShowSettings(false);
+    };
+
+    const handleResetModel = () => {
+        wsRef.current?.send(JSON.stringify({ type: "reset_model" }));
+        setStatus(`Game started - you are ${userColor}. Bot mirrors your style 0% of the time.`);
+        setShowSettings(false);
+    };
+
+    const handleImportGames = (file) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            wsRef.current?.send(JSON.stringify({ type: "import_games", pgn: e.target.result }));
+        };
+        reader.readAsText(file);
+        setShowSettings(false);
+    };
     const canAbort = fenHistory.length - 1 < 3;
     const handleQuit = () => {
         wsRef.current?.send(JSON.stringify({ type: canAbort ? "abort" : "resign" }));
@@ -309,6 +333,14 @@ export default function App() {
                 opacity: phase === "over" && overlayGradient ? 1 : 0,
                 transition: "opacity 0.8s ease",
             }} />
+            {showSettings && (
+                <SettingsModal
+                    onClose={() => setShowSettings(false)}
+                    onResetStats={handleResetStats}
+                    onResetModel={handleResetModel}
+                    onImportGames={handleImportGames}
+                />
+            )}
             {phase === "setup" && (
                 <div style={styles.setup}>
                     <h1 style={styles.title}>Mirror AI Chess Bot</h1>
