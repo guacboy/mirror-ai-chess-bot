@@ -1,5 +1,6 @@
 import sys
 import asyncio
+import io
 import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -8,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import chess
 import chess.engine
+import chess.pgn
 import torch
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -87,6 +89,53 @@ def _run_training(new_experiences: list) -> None:
     print(f"\nSaved {len(new_experiences)} new moves. Total dataset: {len(all_exp)} moves.")
     train(model, device, all_exp)
     save_model(model)
+
+
+def _increment_games_played() -> None:
+    global games_played
+    games_played += 1
+    _save_games_played(games_played)
+
+
+def _reset_model_and_counter() -> None:
+    global games_played
+    from agent.model import ChessNet
+    from agent.trainer import clear_model
+    from agent.game import clear_experiences
+    new_net = ChessNet().to(device)
+    model.load_state_dict(new_net.state_dict())
+    clear_model()
+    clear_experiences()
+    games_played = 0
+    _save_games_played(0)
+    print("Model and training data reset.")
+
+
+def _run_import(pgn_text: str) -> int:
+    pgn_io = io.StringIO(pgn_text)
+    experiences: list[tuple] = []
+    games_count = 0
+    while True:
+        game = chess.pgn.read_game(pgn_io)
+        if game is None:
+            break
+        result = game.headers.get("Result", "*")
+        board = game.board()
+        for move in game.mainline_moves():
+            outcome = (
+                (1.0 if board.turn == chess.WHITE else -1.0) if result == "1-0" else
+                (-1.0 if board.turn == chess.WHITE else 1.0) if result == "0-1" else
+                0.0
+            )
+            experiences.append((board_to_tensor(board), encode_move(move), outcome))
+            board.push(move)
+        games_count += 1
+    if experiences:
+        all_exp = save_experiences(experiences)
+        print(f"\nImported {len(experiences)} moves from {games_count} games. Dataset: {len(all_exp)} total.")
+        train(model, device, all_exp)
+        save_model(model)
+    return games_count
 
 
 app = FastAPI()
@@ -244,6 +293,34 @@ async def game_ws(ws: WebSocket) -> None:
                         loop = asyncio.get_event_loop()
                         await loop.run_in_executor(_executor, _run_training, exp)
                         await send({"type": "training_complete"})
+
+            # resign: user forfeits; train on their moves with a loss outcome.
+            elif msg["type"] == "resign":
+                if user_records:
+                    exp = [(t, idx, -1.0) for t, idx in user_records]
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(_executor, _run_training, exp)
+                    await send({"type": "training_complete"})
+                else:
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(_executor, _increment_games_played)
+
+            # abort: game cancelled early; count the game but don't train.
+            elif msg["type"] == "abort":
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(_executor, _increment_games_played)
+
+            # reset_model: wipe learned weights and restart the counter.
+            elif msg["type"] == "reset_model":
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(_executor, _reset_model_and_counter)
+
+            # import_games: parse a PGN string and train on the imported games.
+            elif msg["type"] == "import_games":
+                pgn_text = msg.get("pgn", "")
+                loop = asyncio.get_event_loop()
+                games_count = await loop.run_in_executor(_executor, _run_import, pgn_text)
+                await send({"type": "import_complete", "games": games_count})
 
     except WebSocketDisconnect:
         pass

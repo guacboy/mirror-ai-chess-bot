@@ -23,7 +23,6 @@ function loadRecord() {
 
 // TODO(feat): stockfish auto-adjusts its rating based on user's skill level
 // TODO(feat): add a small "more detail" button in the message box to show detailed information regarding bot
-// TODO(bug): bot message not updating accurately (check if model is being tracked properly)
 
 // Identifies the sound to play for a bot move by matching legal moves against the resulting FEN.
 function getBotMoveSound(game, newFen) {
