@@ -185,6 +185,7 @@ async def game_ws(ws: WebSocket) -> None:
                     "user_color": color_str,
                     "epsilon": round(epsilon, 2),
                     "model_pct": round((1 - epsilon) * 100),
+                    "games_played": games_played,
                 })
 
                 # If bot goes first (user is black), send bot's opening move.

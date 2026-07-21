@@ -22,7 +22,6 @@ function loadRecord() {
 }
 
 // TODO(feat): stockfish auto-adjusts its rating based on user's skill level
-// TODO(feat): add a small "more detail" button in the message box to show detailed information regarding bot
 
 // Identifies the sound to play for a bot move by matching legal moves against the resulting FEN.
 function getBotMoveSound(game, newFen) {
@@ -59,6 +58,7 @@ export default function App() {
     const [record, setRecord] = useState(loadRecord);
     const [gameResult, setGameResult] = useState(null); // "win" | "lose" | "draw" | null
     const [showSettings, setShowSettings] = useState(false);
+    const [botDetail, setBotDetail] = useState(null);
 
     const wsRef = useRef(null);
     const soundsRef = useRef({
@@ -102,6 +102,13 @@ export default function App() {
                 setStatus(
                     `Game started - you are ${color}. Bot mirrors your style ${msg.model_pct}% of the time.`
                 );
+                setBotDetail({
+                    gamesPlayed: msg.games_played ?? 0,
+                    modelPct: msg.model_pct,
+                    sfPct: 100 - msg.model_pct,
+                    rPct: 0,
+                    isActual: false,
+                });
                 setPhase("playing");
             }
 
@@ -135,9 +142,17 @@ export default function App() {
                 const total = m + sf + r;
                 const mPct = total > 0 ? Math.round((m / total) * 100) : 0;
                 const sfPct = total > 0 ? Math.round((sf / total) * 100) : 0;
+                const rPct = 100 - mPct - sfPct;
                 setStatus(
                     `${labels[msg.result] ?? msg.result}  ·  Bot used your style ${mPct}%, Stockfish ${sfPct}%`
                 );
+                setBotDetail((prev) => ({
+                    gamesPlayed: prev?.gamesPlayed ?? 0,
+                    modelPct: mPct,
+                    sfPct,
+                    rPct,
+                    isActual: true,
+                }));
                 setPhase("over");
                 setGameResult(msg.result);
                 soundsRef.current.gameEnd.currentTime = 0;
@@ -214,6 +229,7 @@ export default function App() {
         setFenHistory([]);
         setViewIndex(null);
         setGameResult(null);
+        setBotDetail(null);
         startGame(nextColor);
     };
 
@@ -229,6 +245,7 @@ export default function App() {
     const handleResetModel = () => {
         wsRef.current?.send(JSON.stringify({ type: "reset_model" }));
         setStatus(`Game started - you are ${userColor}. Bot mirrors your style 0% of the time.`);
+        setBotDetail({ gamesPlayed: 0, modelPct: 0, sfPct: 100, rPct: 0, isActual: false });
         setShowSettings(false);
     };
 
@@ -374,7 +391,7 @@ export default function App() {
                             <Record wins={record.wins} losses={record.losses} draws={record.draws} />
                         </div>
                         <div style={styles.sidebar}>
-                            <Status text={status} />
+                            <Status text={status} detail={botDetail} />
                             <MoveLog moves={moveLog} activeMoveIndex={activeMoveIndex} onMoveClick={handleMoveClick} />
                             <GameControls
                                 phase={phase}
