@@ -6,12 +6,25 @@ A chess bot that learns your playstyle and plays it back against you. The idea i
 
 The bot starts by playing Stockfish's best move in every position. As you play more games, it shifts away from Stockfish and increasingly plays moves predicted by a neural network trained exclusively on **your** moves. By game 19, the bot plays your style 95% of the time.
 
-**Learning signal:** After each game, every move you played is weighted by the outcome:
+**Learning signal:** After each game (including resignations), every move you played is weighted by the outcome:
 - Win  -> those moves get reinforced
 - Loss -> those moves get discouraged
 - Draw -> ignored
 
 Over time the bot learns not just your style, but your *winning* style.
+
+## Features
+
+- **Color selection** - play as white or black each session; Play Again automatically switches sides
+- **Resign / Abort** - resign after 3+ moves (counts as a loss) or abort early (no record penalty); both trigger the loss animation and offer Play Again
+- **Move history** - click any move in the log or use the arrow keys to replay the game
+- **Win / Loss / Draw record** - persisted in localStorage across sessions
+- **Sound effects** - distinct audio for move, capture, castle, promotion, check, illegal move attempt, and game end
+- **Settings modal**
+  - *Import Games* - load a PGN file to pre-train the bot on your historical games
+  - *Reset Model* - wipe the bot's learned weights and start fresh
+  - *Reset W/L Stats* - clear your win/loss/draw record
+- **Bot detail panel** - click "more detail" in the status box to see games learned from and the expected model/Stockfish breakdown; resets instantly when you reset the model
 
 ## Algorithm
 
@@ -22,7 +35,7 @@ The model is a **Multi-Layer Perceptron** built in PyTorch with ~1.84 million tr
 **Input - board encoding (773 numbers)**
 
 Every chess position is converted into a flat vector of 773 floating-point numbers:
-- 12 binary 8*8 grids - one per piece type per color (pawn, knight, bishop, rook, queen, king * white/black). Each cell is `1.0` if that piece occupies that square, `0.0` otherwise.
+- 12 binary 8x8 grids - one per piece type per color (pawn, knight, bishop, rook, queen, king x white/black). Each cell is `1.0` if that piece occupies that square, `0.0` otherwise.
 - 1 value for whose turn it is (`1.0` = white, `0.0` = black)
 - 4 values for castling rights (one per right, `1.0` or `0.0`)
 
@@ -46,7 +59,7 @@ Output     4096  numbers  (one score per possible from -> to move)
 
 **Output - move selection**
 
-The 4096 output scores cover every possible from-square/to-square combination (64 * 64). Before selecting a move, all illegal moves are masked to `-inf` and softmax is applied so the remaining scores sum to 1.0. The move with the highest probability is played.
+The 4096 output scores cover every possible from-square/to-square combination (64 x 64). Before selecting a move, all illegal moves are masked to `-inf` and softmax is applied so the remaining scores sum to 1.0. The move with the highest probability is played.
 
 ### Learning algorithm - Outcome-Weighted Behavioural Cloning
 
@@ -68,7 +81,7 @@ Pure behavioural cloning would copy your blunders just as readily as your good m
 
 For each move in a batch:
 ```
-loss = −log_prob(move_played) × outcome
+loss = −log_prob(move_played) x outcome
 ```
 
 Averaged across the batch and minimised by the **Adam optimiser** (learning rate 0.001).
@@ -79,7 +92,7 @@ Averaged across the batch and minimised by the **Adam optimiser** (learning rate
 
 **Training schedule**
 
-After every game, the full accumulated dataset is shuffled and trained for 5 epochs in batches of 64. Every new game causes the model to re-learn from all historical games, not just the most recent one.
+After every completed game or resignation, the full accumulated dataset is shuffled and trained for 5 epochs in batches of 64. Every new game causes the model to re-learn from all historical games, not just the most recent one. Aborted games increment the game counter without triggering training.
 
 ## Requirements
 
@@ -145,6 +158,14 @@ cd ..
 
 This produces `web/dist/`, which the server serves automatically in production.
 
+### 7. Run
+
+```bash
+python src/agent/main.py
+```
+
+Then open [http://localhost:8000](http://localhost:8000) in your browser.
+
 ### Development mode
 
 Run the backend and frontend in separate terminals:
@@ -161,6 +182,10 @@ npm run dev
 Then open [http://localhost:5173](http://localhost:5173). The React app connects directly to the FastAPI WebSocket at port 8000.
 
 ## Resetting
+
+**In-game:** open Settings (during a game) to reset the model or your W/L stats without leaving the browser.
+
+**CLI:** stop the server and run one of:
 
 ```bash
 # Wipe learned weights only (bot relearns from your existing game data)
@@ -183,12 +208,12 @@ All model data survives server restarts. Three files are written to `src/data/`:
 | `games.pt` | Every move you've ever played, with its outcome |
 | `games_played.txt` | Game count used for epsilon decay |
 
-Refreshing the browser has no effect on any of these. They are only removed by the `--reset-*` flags above.
+Refreshing the browser has no effect on any of these. They are only removed by the `--reset-*` flags or the in-game Settings modal.
 
 ## Project structure
 
 ```
-llm-chess-bot/
+mirror-ai-chess-bot/
 ├── api/
 │   ├── main.py          # FastAPI server - WebSocket game loop, training trigger
 │   ├── __init__.py
@@ -199,18 +224,23 @@ llm-chess-bot/
 │   │   ├── model.py     # Neural network (773 -> 4096 move scores)
 │   │   ├── trainer.py   # Trains model on game data, saves/loads weights
 │   │   ├── game.py      # Epsilon decay, bot move selection, data persistence
-│   │   └── main.py      # Entry point and CLI flags
+│   │   └── main.py      # Entry point and CLI flags (--reset-model, --reset-data, --reset-all)
 │   └── data/            # Persistent model and game data (gitignored)
 │       ├── model.pt
 │       ├── games.pt
 │       └── games_played.txt
 ├── web/
+│   ├── public/
+│   │   └── sounds/      # Sound effect .mp3 files
 │   ├── src/
-│   │   ├── App.jsx                  # Root component - WebSocket logic, game state
+│   │   ├── App.jsx                      # Root component - WebSocket logic, game state
 │   │   └── components/
-│   │       ├── Board.jsx            # Interactive chess board (react-chessboard)
-│   │       ├── MoveLog.jsx          # Scrollable move history panel
-│   │       └── Status.jsx           # Status text display
+│   │       ├── Board.jsx                # Interactive chess board (react-chessboard)
+│   │       ├── GameControls.jsx         # Settings, Resign/Abort, Play Again, nav buttons
+│   │       ├── MoveLog.jsx              # Scrollable, clickable move history panel
+│   │       ├── Record.jsx               # Win/loss/draw counter (localStorage)
+│   │       ├── SettingsModal.jsx        # Settings popup (import PGN, reset model/stats)
+│   │       └── Status.jsx               # Status message with collapsible bot detail panel
 │   ├── index.html
 │   └── vite.config.js
 └── requirements.txt
