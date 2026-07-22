@@ -22,9 +22,11 @@ Over time the bot learns not just your style, but your *winning* style.
 - **Sound effects** - distinct audio for move, capture, castle, promotion, check, illegal move attempt, and game end
 - **Settings modal**
   - *Import Games* - load a PGN file to pre-train the bot on your historical games
+  - *Stockfish Level* - manually set difficulty from 0 (easiest) to 20 (full strength)
+  - *Auto-adjust* - toggle to let the difficulty rise/fall automatically based on your results (win → +1, loss → −1)
   - *Reset Model* - wipe the bot's learned weights and start fresh
   - *Reset W/L Stats* - clear your win/loss/draw record
-- **Bot detail panel** - click "more detail" in the status box to see games learned from and the expected model/Stockfish breakdown; resets instantly when you reset the model
+- **Bot detail panel** - click "more detail" in the status box to see games learned from, current Stockfish level, and the expected model/Stockfish breakdown; updates live when difficulty changes
 
 ## Algorithm
 
@@ -207,6 +209,7 @@ All model data survives server restarts. Three files are written to `src/data/`:
 | `model.pt` | Learned neural network weights |
 | `games.pt` | Every move you've ever played, with its outcome |
 | `games_played.txt` | Game count used for epsilon decay |
+| `stockfish_settings.json` | Stockfish skill level and auto-adjust toggle |
 
 Refreshing the browser has no effect on any of these. They are only removed by the `--reset-*` flags or the in-game Settings modal.
 
@@ -228,7 +231,8 @@ mirror-ai-chess-bot/
 │   └── data/            # Persistent model and game data (gitignored)
 │       ├── model.pt
 │       ├── games.pt
-│       └── games_played.txt
+│       ├── games_played.txt
+│       └── stockfish_settings.json
 ├── web/
 │   ├── public/
 │   │   └── sounds/      # Sound effect .mp3 files
@@ -239,7 +243,7 @@ mirror-ai-chess-bot/
 │   │       ├── GameControls.jsx         # Settings, Resign/Abort, Play Again, nav buttons
 │   │       ├── MoveLog.jsx              # Scrollable, clickable move history panel
 │   │       ├── Record.jsx               # Win/loss/draw counter (localStorage)
-│   │       ├── SettingsModal.jsx        # Settings popup (import PGN, reset model/stats)
+│   │       ├── SettingsModal.jsx        # Settings popup (import PGN, Stockfish difficulty, reset model/stats)
 │   │       └── Status.jsx               # Status message with collapsible bot detail panel
 │   ├── index.html
 │   └── vite.config.js
