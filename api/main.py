@@ -61,6 +61,28 @@ def _save_games_played(n: int) -> None:
 
 games_played = _load_games_played()
 
+# Persist Stockfish difficulty settings across restarts.
+_SF_SETTINGS_PATH = Path(__file__).parent.parent / "src" / "data" / "stockfish_settings.json"
+
+
+def _load_sf_settings() -> dict:
+    if _SF_SETTINGS_PATH.exists():
+        try:
+            return json.loads(_SF_SETTINGS_PATH.read_text())
+        except Exception:
+            pass
+    return {"level": 10, "auto": True}
+
+
+def _save_sf_settings(settings: dict) -> None:
+    _SF_SETTINGS_PATH.parent.mkdir(exist_ok=True)
+    _SF_SETTINGS_PATH.write_text(json.dumps(settings))
+
+
+_sf_settings = _load_sf_settings()
+sf_skill_level: int = int(_sf_settings.get("level", 10))
+sf_auto_adjust: bool = bool(_sf_settings.get("auto", True))
+
 PIECE_NAMES = {
     chess.PAWN: "Pawn", chess.KNIGHT: "Knight", chess.BISHOP: "Bishop",
     chess.ROOK: "Rook", chess.QUEEN: "Queen", chess.KING: "King",
@@ -95,6 +117,28 @@ def _increment_games_played() -> None:
     global games_played
     games_played += 1
     _save_games_played(games_played)
+
+
+def _update_sf_settings(level: int, auto: bool) -> None:
+    global sf_skill_level, sf_auto_adjust
+    sf_skill_level = level
+    sf_auto_adjust = auto
+    _save_sf_settings({"level": level, "auto": auto})
+    print(f"Stockfish settings updated: level={level}, auto={auto}")
+
+
+def _auto_adjust_sf(result: str) -> None:
+    global sf_skill_level
+    if not sf_auto_adjust:
+        return
+    if result == "win":
+        sf_skill_level = min(20, sf_skill_level + 1)
+    elif result == "lose":
+        sf_skill_level = max(0, sf_skill_level - 1)
+    else:
+        return
+    _save_sf_settings({"level": sf_skill_level, "auto": sf_auto_adjust})
+    print(f"Stockfish skill auto-adjusted to {sf_skill_level}")
 
 
 def _reset_model_and_counter() -> None:
@@ -186,12 +230,14 @@ async def game_ws(ws: WebSocket) -> None:
                     "epsilon": round(epsilon, 2),
                     "model_pct": round((1 - epsilon) * 100),
                     "games_played": games_played,
+                    "sf_skill": sf_skill_level,
+                    "sf_auto": sf_auto_adjust,
                 })
 
                 # If bot goes first (user is black), send bot's opening move.
                 bot_color = chess.BLACK if user_color == chess.WHITE else chess.WHITE
                 if board.turn == bot_color:
-                    move, source = get_bot_move(board, model, device, epsilon, sf_engine)
+                    move, source = get_bot_move(board, model, device, epsilon, sf_engine, sf_skill_level)
                     desc = _format_move(board, move)
                     board.push(move)
                     move_counts[source] += 1
@@ -252,12 +298,14 @@ async def game_ws(ws: WebSocket) -> None:
                         loop = asyncio.get_event_loop()
                         await loop.run_in_executor(_executor, _run_training, exp)
                         await send({"type": "training_complete"})
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(_executor, _auto_adjust_sf, label)
                     continue
 
                 # Bot's turn.
                 epsilon = get_epsilon(games_played)
                 bot_color = chess.BLACK if user_color == chess.WHITE else chess.WHITE
-                move, source = get_bot_move(board, model, device, epsilon, sf_engine)
+                move, source = get_bot_move(board, model, device, epsilon, sf_engine, sf_skill_level)
                 desc = _format_move(board, move)
                 board.push(move)
                 move_counts[source] += 1
@@ -294,6 +342,8 @@ async def game_ws(ws: WebSocket) -> None:
                         loop = asyncio.get_event_loop()
                         await loop.run_in_executor(_executor, _run_training, exp)
                         await send({"type": "training_complete"})
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(_executor, _auto_adjust_sf, label)
 
             # resign: user forfeits; train on their moves with a loss outcome.
             elif msg["type"] == "resign":
@@ -305,11 +355,20 @@ async def game_ws(ws: WebSocket) -> None:
                 else:
                     loop = asyncio.get_event_loop()
                     await loop.run_in_executor(_executor, _increment_games_played)
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(_executor, _auto_adjust_sf, "lose")
 
             # abort: game cancelled early; count the game but don't train.
             elif msg["type"] == "abort":
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(_executor, _increment_games_played)
+
+            # set_stockfish: update skill level and/or auto-adjust setting.
+            elif msg["type"] == "set_stockfish":
+                level = max(0, min(20, int(msg.get("level", sf_skill_level))))
+                auto = bool(msg.get("auto", sf_auto_adjust))
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(_executor, _update_sf_settings, level, auto)
 
             # reset_model: wipe learned weights and restart the counter.
             elif msg["type"] == "reset_model":

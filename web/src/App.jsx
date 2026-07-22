@@ -21,8 +21,6 @@ function loadRecord() {
     return { wins: 0, losses: 0, draws: 0 };
 }
 
-// TODO(feat): stockfish auto-adjusts its rating based on user's skill level
-
 // Identifies the sound to play for a bot move by matching legal moves against the resulting FEN.
 function getBotMoveSound(game, newFen) {
     const newBoard = newFen.split(" ")[0];
@@ -108,6 +106,8 @@ export default function App() {
                     sfPct: 100 - msg.model_pct,
                     rPct: 0,
                     isActual: false,
+                    sfSkill: msg.sf_skill ?? 10,
+                    sfAuto: msg.sf_auto ?? true,
                 });
                 setPhase("playing");
             }
@@ -146,13 +146,24 @@ export default function App() {
                 setStatus(
                     `${labels[msg.result] ?? msg.result}  ·  Bot used your style ${mPct}%, Stockfish ${sfPct}%`
                 );
-                setBotDetail((prev) => ({
-                    gamesPlayed: prev?.gamesPlayed ?? 0,
-                    modelPct: mPct,
-                    sfPct,
-                    rPct,
-                    isActual: true,
-                }));
+                setBotDetail((prev) => {
+                    const auto = prev?.sfAuto ?? true;
+                    const cur = prev?.sfSkill ?? 10;
+                    const newSkill = auto
+                        ? msg.result === "win" ? Math.min(20, cur + 1)
+                        : msg.result === "lose" ? Math.max(0, cur - 1)
+                        : cur
+                        : cur;
+                    return {
+                        gamesPlayed: prev?.gamesPlayed ?? 0,
+                        modelPct: mPct,
+                        sfPct,
+                        rPct,
+                        isActual: true,
+                        sfSkill: newSkill,
+                        sfAuto: auto,
+                    };
+                });
                 setPhase("over");
                 setGameResult(msg.result);
                 soundsRef.current.gameEnd.currentTime = 0;
@@ -245,7 +256,13 @@ export default function App() {
     const handleResetModel = () => {
         wsRef.current?.send(JSON.stringify({ type: "reset_model" }));
         setStatus(`Game started - you are ${userColor}. Bot mirrors your style 0% of the time.`);
-        setBotDetail({ gamesPlayed: 0, modelPct: 0, sfPct: 100, rPct: 0, isActual: false });
+        setBotDetail((prev) => ({ gamesPlayed: 0, modelPct: 0, sfPct: 100, rPct: 0, isActual: false, sfSkill: prev?.sfSkill ?? 10, sfAuto: prev?.sfAuto ?? true }));
+        setShowSettings(false);
+    };
+
+    const handleSetStockfish = (level, auto) => {
+        wsRef.current?.send(JSON.stringify({ type: "set_stockfish", level, auto }));
+        setBotDetail((prev) => prev ? { ...prev, sfSkill: level, sfAuto: auto } : prev);
         setShowSettings(false);
     };
 
@@ -259,16 +276,22 @@ export default function App() {
     };
     const canAbort = fenHistory.length - 1 < 3;
     const handleQuit = () => {
-        wsRef.current?.send(JSON.stringify({ type: canAbort ? "abort" : "resign" }));
+        const isAbort = canAbort;
+        wsRef.current?.send(JSON.stringify({ type: isAbort ? "abort" : "resign" }));
         wsRef.current?.close();
         setPhase("over");
         setGameResult("lose");
-        setStatus(canAbort ? "Game aborted." : "You resigned.");
-        if (!canAbort) {
+        setStatus(isAbort ? "Game aborted." : "You resigned.");
+        if (!isAbort) {
             setRecord((prev) => {
                 const next = { ...prev, losses: prev.losses + 1 };
                 localStorage.setItem(RECORD_KEY, JSON.stringify(next));
                 return next;
+            });
+            setBotDetail((prev) => {
+                if (!prev) return prev;
+                const newSkill = prev.sfAuto ? Math.max(0, (prev.sfSkill ?? 10) - 1) : (prev.sfSkill ?? 10);
+                return { ...prev, sfSkill: newSkill };
             });
         }
         soundsRef.current.gameEnd.currentTime = 0;
@@ -355,6 +378,9 @@ export default function App() {
                     onResetStats={handleResetStats}
                     onResetModel={handleResetModel}
                     onImportGames={handleImportGames}
+                    sfSkill={botDetail?.sfSkill ?? 10}
+                    sfAuto={botDetail?.sfAuto ?? true}
+                    onSetStockfish={handleSetStockfish}
                 />
             )}
             {phase === "setup" && (

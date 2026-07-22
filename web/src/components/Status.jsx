@@ -28,6 +28,10 @@ export default function Status({ text, detail }) {
                                 label="Games learned from"
                                 value={detail.gamesPlayed}
                             />
+                            <StatRow
+                                label="Stockfish level"
+                                value={`${detail.sfSkill ?? 10} / 20${detail.sfAuto ? "  ·  auto" : ""}`}
+                            />
                             <div style={styles.divider} />
                             <StatRow
                                 label={detail.isActual ? "This game — Model" : "Expected — Model"}

@@ -18,14 +18,26 @@ function SettingRow({ label, desc, action, danger, onClick }) {
     );
 }
 
-export default function SettingsModal({ onClose, onResetStats, onResetModel, onImportGames }) {
+export default function SettingsModal({ onClose, onResetStats, onResetModel, onImportGames, sfSkill, sfAuto, onSetStockfish }) {
     const fileRef = useRef(null);
     const [closeHover, setCloseHover] = useState(false);
+    const [levelInput, setLevelInput] = useState(String(sfSkill ?? 10));
+    const [autoInput, setAutoInput] = useState(sfAuto ?? true);
 
     const handleFileChange = (e) => {
         const file = e.target.files?.[0];
         if (file) onImportGames(file);
         e.target.value = "";
+    };
+
+    const handleApplyStockfish = () => {
+        const level = Math.max(0, Math.min(20, parseInt(levelInput) || 0));
+        setLevelInput(String(level));
+        onSetStockfish(level, autoInput);
+    };
+
+    const handleLevelKey = (e) => {
+        if (e.key === "Enter") handleApplyStockfish();
     };
 
     return (
@@ -54,6 +66,56 @@ export default function SettingsModal({ onClose, onResetStats, onResetModel, onI
                         style={{ display: "none" }}
                         onChange={handleFileChange}
                     />
+
+                    <div style={styles.sectionDivider} />
+
+                    {/* Stockfish level */}
+                    <div style={styles.row}>
+                        <div style={styles.rowText}>
+                            <div style={styles.rowLabel}>Stockfish Level</div>
+                            <div style={styles.rowDesc}>0 = easiest · 20 = full strength</div>
+                        </div>
+                        <div style={styles.levelControls}>
+                            <input
+                                type="number"
+                                min={0}
+                                max={20}
+                                value={levelInput}
+                                onChange={(e) => setLevelInput(e.target.value)}
+                                onKeyDown={handleLevelKey}
+                                style={styles.levelInput}
+                            />
+                            <button
+                                className="btn"
+                                style={styles.rowBtn}
+                                onClick={handleApplyStockfish}
+                            >
+                                Set
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Auto-adjust toggle */}
+                    <div style={{ ...styles.row, paddingTop: 6 }}>
+                        <div style={styles.rowText}>
+                            <div style={styles.rowLabel}>Auto-adjust</div>
+                            <div style={styles.rowDesc}>Stockfish level changes based on your results</div>
+                        </div>
+                        <label style={styles.toggle}>
+                            <input
+                                type="checkbox"
+                                checked={autoInput}
+                                onChange={(e) => setAutoInput(e.target.checked)}
+                                style={styles.checkbox}
+                            />
+                            <span style={{ ...styles.toggleTrack, background: autoInput ? "rgba(142,175,212,0.35)" : "rgba(255,255,255,0.06)" }}>
+                                <span style={{ ...styles.toggleThumb, transform: autoInput ? "translateX(14px)" : "translateX(0)" }} />
+                            </span>
+                        </label>
+                    </div>
+
+                    <div style={styles.sectionDivider} />
+
                     <SettingRow
                         label="Reset Model"
                         desc="Clear the bot's learned playstyle and start fresh"
@@ -118,6 +180,11 @@ const styles = {
     body: {
         padding: "8px 0 4px",
     },
+    sectionDivider: {
+        height: 1,
+        background: "rgba(142,175,212,0.08)",
+        margin: "4px 16px",
+    },
     row: {
         display: "flex",
         alignItems: "center",
@@ -157,5 +224,55 @@ const styles = {
     rowBtnDanger: {
         color: "#c47a7a",
         borderColor: "rgba(196,122,122,0.3)",
+    },
+    levelControls: {
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        flexShrink: 0,
+    },
+    levelInput: {
+        width: 48,
+        padding: "5px 6px",
+        background: "transparent",
+        border: "1px solid rgba(142,175,212,0.3)",
+        borderRadius: 4,
+        color: "#8eafd4",
+        fontFamily: "'Rajdhani', sans-serif",
+        fontWeight: 600,
+        fontSize: 13,
+        textAlign: "center",
+        outline: "none",
+    },
+    toggle: {
+        display: "flex",
+        alignItems: "center",
+        cursor: "pointer",
+        flexShrink: 0,
+    },
+    checkbox: {
+        position: "absolute",
+        opacity: 0,
+        width: 0,
+        height: 0,
+    },
+    toggleTrack: {
+        position: "relative",
+        display: "inline-block",
+        width: 30,
+        height: 16,
+        borderRadius: 8,
+        border: "1px solid rgba(142,175,212,0.25)",
+        transition: "background 0.2s",
+    },
+    toggleThumb: {
+        position: "absolute",
+        top: 2,
+        left: 2,
+        width: 10,
+        height: 10,
+        borderRadius: "50%",
+        background: "#8eafd4",
+        transition: "transform 0.2s",
     },
 };

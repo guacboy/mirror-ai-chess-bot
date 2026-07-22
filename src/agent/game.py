@@ -26,6 +26,7 @@ def get_bot_move(
     device: torch.device,
     epsilon: float,
     sf_engine: chess.engine.SimpleEngine | None = None,
+    sf_skill: int = 10,
 ) -> tuple[chess.Move, str]:
     """
     Picks the bot's next move and reports where it came from.
@@ -38,6 +39,8 @@ def get_bot_move(
     Epsilon controls the mix:
         High epsilon -> Stockfish   (early games, model untrained)
         Low epsilon  -> model       (later games, model has learned user style)
+
+    sf_skill controls Stockfish's strength (0 = weakest, 20 = full strength).
     """
     use_model = random.random() >= epsilon
 
@@ -47,6 +50,7 @@ def get_bot_move(
     # Epsilon triggered; use Stockfish as the strong-play fallback.
     if sf_engine is not None:
         try:
+            sf_engine.configure({"Skill Level": sf_skill})
             result = sf_engine.play(board, chess.engine.Limit(time=0.1))
             return result.move, "stockfish"
         except Exception:
